@@ -42,6 +42,7 @@ st.markdown("Analisis Karakteristik Udara Aotizhongxin dan Korelasi Meteorologi 
 col_m1, col_m2, col_m3 = st.columns(3)
 with col_m1:
     st.metric("Total Observasi", f"{len(main_df):,}")
+    st.caption("Data yang ditampilkan hanya 50% sampel data untuk optimalisasi performa di Streamlit Cloud.")
 with col_m2:
     avg_pm = main_df['PM2.5'].mean()
     st.metric("Avg PM2.5 (Keseluruhan)", f"{avg_pm:.2f} µg/m³")
