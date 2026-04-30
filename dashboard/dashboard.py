@@ -9,7 +9,16 @@ sns.set_style("whitegrid")
 
 @st.cache_data
 def load_data():
-    df = pd.read_csv("main_data.csv")
+    # Mengambil jalur folder tempat file dashboard.py ini berada
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    
+    # Menggabungkan jalur folder tadi dengan nama file csv
+    file_path = os.path.join(current_dir, "main_data.csv")
+    
+    # Load data
+    df = pd.read_csv(file_path)
+    
+    # Pastikan kolom date terbuat
     df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
     return df
 
