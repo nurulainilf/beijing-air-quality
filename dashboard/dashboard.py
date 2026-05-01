@@ -78,7 +78,7 @@ else:
     st.divider()
 
     # --- GLOBAL VISUALIZATION (GABUNGAN) ---
-    st.header("📈 Tren Kualitas Udara Gabungan")
+    st.header("📈 Tren Kualitas Udara")
     
     # Grafik Tren Bulanan Perbandingan
     # Otomatis menyesuaikan jumlah garis berdasarkan stasiun yang dipilih
@@ -151,7 +151,7 @@ else:
 
 # --- BAGIAN 1: KARAKTERISTIK AOTIZHONGXIN ---
 if "Aotizhongxin" in selected_stations:
-    st.header("1. Karakteristik PM2.5 di Aotizhongxin (Musim Dingin)")
+    st.header("Karakteristik PM2.5 di Aotizhongxin (Musim Dingin)")
     
     winter_months = [11, 12, 1, 2]
     aoti_data = main_df[main_df['station'] == 'Aotizhongxin'].copy()
@@ -206,7 +206,7 @@ if "Aotizhongxin" in selected_stations:
 
 # --- BAGIAN 2: ANALISIS WANLIU ---
 if "Wanliu" in selected_stations:
-    st.header("2. Analisis Kualitas Udara di Stasiun Wanliu")
+    st.header("Analisis Kualitas Udara di Stasiun Wanliu")
     wanliu_df = main_df[main_df['station'] == 'Wanliu'].copy()
 
     if not wanliu_df.empty:
@@ -217,7 +217,7 @@ if "Wanliu" in selected_stations:
 
         with tabs[0]:
             st.subheader("Matriks Korelasi Faktor Meteorologi")
-            st.caption(f"📊 {periode_text}")
+            st.caption(f"📅 {periode_text}")
             
             # Hitung korelasi
             cols = ['PM2.5', 'TEMP', 'PRES', 'DEWP', 'RAIN', 'WSPM']
@@ -262,7 +262,7 @@ if "Wanliu" in selected_stations:
 
         with tabs[2]:
             st.subheader("Tren PM2.5 vs Kecepatan Angin (WSPM)")
-            st.caption(f"📈 {periode_text}")
+            st.caption(f"📅 {periode_text}")
             
             # Agregasi data untuk tren
             trend = wanliu_df.groupby('month').agg({'PM2.5':'mean', 'WSPM':'mean'}).reset_index()
@@ -286,7 +286,7 @@ if "Wanliu" in selected_stations:
 
         with tabs[3]:
             st.subheader("Kategori Kualitas Udara")
-            st.caption(f"📊 Analisis Proporsi: {periode_text}")
+            st.caption(f"📅 Analisis Proporsi: {periode_text}")
             
             def cat_epa(v):
                 if v <= 35: return 'Baik'
