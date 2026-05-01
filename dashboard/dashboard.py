@@ -13,13 +13,14 @@ def load_data():
     current_dir = os.path.dirname(os.path.abspath(__file__))
     file_path = os.path.join(current_dir, "main_data.csv")
     df = pd.read_csv(file_path)
+    # Pastikan kolom date untuk filter global
     df['date'] = pd.to_datetime(df[['year', 'month', 'day', 'hour']])
     return df
 
 # Initialize Data
 all_df = load_data()
 
-# --- SIDEBAR ---
+# --- SIDEBAR (GLOBAL FILTER) ---
 with st.sidebar:
     st.title("Air Quality Analysis")
     st.image("https://asiasociety.org/sites/default/files/styles/1200w/public/1/101123_beijing_air.jpg") 
@@ -28,247 +29,295 @@ with st.sidebar:
     st.write(f"**Nama:** Nurul Ainil Fitri")
     st.divider()
     
-    st.markdown("### Filter Analisis")
-
-    # Filter Tahun Aotizhongxin
-    year_aoti = st.selectbox(
-        "Pilih Tahun Analisis Aotizhongxin:", 
-        options=sorted(all_df['year'].unique()), 
-        index=1 # Default 2014
+    st.markdown("### Filter Global")
+    
+    # Filter 1: Rentang Waktu
+    min_date = all_df["date"].min()
+    max_date = all_df["date"].max()
+    start_date, end_date = st.date_input(
+        label='Rentang Waktu:',
+        min_value=min_date,
+        max_value=max_date,
+        value=[min_date, max_date]
+    )
+    
+    # Filter 2: Pilih Stasiun (Hanya 2 stasiun target)
+    target_stations = ["Aotizhongxin", "Wanliu"]
+    selected_stations = st.multiselect(
+        label="Pilih Stasiun Fokus:",
+        options=target_stations,
+        default=target_stations
     )
 
-    # Filter Tahun Wanliu
-    selected_year = st.selectbox(
-        "Pilih Tahun Analisis Wanliu:", 
-        options=sorted(all_df['year'].unique()), 
-        index=3 # Default 2016
-    )
+# --- LOGIKA FILTERING ---
+main_df = all_df[
+    (all_df["date"] >= pd.to_datetime(start_date)) & 
+    (all_df["date"] <= pd.to_datetime(end_date)) &
+    (all_df["station"].isin(selected_stations))
+]
 
 # --- MAIN PAGE ---
-st.title("📊 Beijing Air Quality Dashboard")
-st.markdown("Analisis Karakteristik Udara Aotizhongxin dan Korelasi Meteorologi di Wanliu.")
+st.title("📊 Air Quality Dashboard: Aotizhongxin vs Wanliu")
 
-# Metrics Section
-main_df = all_df.copy()
+if not selected_stations:
+    st.warning("⚠️ Silakan pilih minimal satu stasiun di sidebar.")
+else:
+    # Metrik Utama (Global)
+    col_m1, col_m2, col_m3, col_m4 = st.columns([1, 1.5, 1, 1.2])
+    with col_m1:
+        st.metric("Total Observasi", f"{len(main_df):,}")
+    with col_m2:
+        avg_pm = main_df['PM2.5'].mean()
+        st.metric("Avg PM2.5 (Gabungan)", f"{avg_pm:.2f} µg/m³" if not pd.isna(avg_pm) else "0.00")
+    with col_m3:
+        st.metric("Stasiun Aktif", len(selected_stations))
+    with col_m4:
+        st.metric("Rentang Hari", f"{(pd.to_datetime(end_date) - pd.to_datetime(start_date)).days} Hari")
+        st.caption(f"Data dari {start_date} sampai {end_date}")
 
-col_m1, col_m2, col_m3 = st.columns(3)
-with col_m1:
-    st.metric("Total Observasi", f"{len(main_df):,}")
-    st.caption("⚠️ Menampilkan 50% sampel data untuk optimalisasi performa di Streamlit Cloud.")
-with col_m2:
-    avg_pm = main_df['PM2.5'].mean()
-    st.metric("Avg PM2.5 (Keseluruhan)", f"{avg_pm:.2f} µg/m³" if not pd.isna(avg_pm) else "0.00")
-with col_m3:
-    st.metric("Lokasi Fokus", "Aotizhongxin & Wanliu")
+    st.divider()
 
-st.divider()
+    # --- GLOBAL VISUALIZATION (GABUNGAN) ---
+    st.header("📈 Tren Kualitas Udara Gabungan")
+    
+    # Grafik Tren Bulanan Perbandingan
+    # Otomatis menyesuaikan jumlah garis berdasarkan stasiun yang dipilih
+    monthly_compare = main_df.groupby(['month', 'station'])['PM2.5'].mean().reset_index()
+    
+    fig_compare, ax_compare = plt.subplots(figsize=(12, 5))
+    sns.lineplot(
+        data=monthly_compare, 
+        x='month', 
+        y='PM2.5', 
+        hue='station', 
+        marker='o', 
+        palette='Set1', 
+        ax=ax_compare
+    )
+    ax_compare.set_title("Perbandingan Tren PM2.5 Bulanan")
+    ax_compare.set_ylabel("Rata-rata PM2.5 (µg/m³)")
+    ax_compare.set_xticks(range(1, 13))
+    st.pyplot(fig_compare)
+
+    # --- ANALISIS PER STASIUN (Hanya muncul jika dipilih) ---
+    col_a, col_b = st.columns([1, 1])
+
+    with col_a:
+        if "Aotizhongxin" in selected_stations:
+            st.subheader("📍 Aotizhongxin")
+            aoti_data = main_df[main_df['station'] == 'Aotizhongxin']
+            st.write(f"Rata-rata: **{aoti_data['PM2.5'].mean():.2f} µg/m³**")
+        else:
+            st.info("Analisis Aotizhongxin dinonaktifkan.")
+
+    with col_b:
+        if "Wanliu" in selected_stations:
+            st.subheader("📍 Wanliu")
+            wanliu_data = main_df[main_df['station'] == 'Wanliu']
+            st.write(f"Rata-rata: **{wanliu_data['PM2.5'].mean():.2f} µg/m³**")
+        else:
+            st.info("Analisis Wanliu dinonaktifkan.")
+    
+    # --- LOGIKA INSIGHT DINAMIS ---
+    # Hitung rata-rata per stasiun dari data yang sudah difilter
+    station_stats = main_df.groupby('station')['PM2.5'].mean().sort_values(ascending=False)
+    
+    if len(station_stats) > 1:
+        highest_stat = station_stats.index[0]
+        highest_val = station_stats.values[0]
+        lowest_stat = station_stats.index[1]
+        lowest_val = station_stats.values[1]
+        diff_val = highest_val - lowest_val
+        
+        insight_text = f"""
+        **Insight Global:**
+        * **Perbandingan Stasiun:** Berdasarkan rentang waktu yang dipilih, stasiun **{highest_stat}** memiliki rata-rata konsentrasi PM2.5 yang lebih tinggi (**{highest_val:.2f} µg/m³**) dibandingkan dengan **{lowest_stat}** (**{lowest_val:.2f} µg/m³**).
+        * **Selisih Konsentrasi:** Terdapat selisih rata-rata sebesar **{diff_val:.2f} µg/m³** di antara kedua stasiun tersebut.
+        * **Analisis Tren:** Jika pola garis pada grafik di atas saling mengikuti (berhimpitan), hal ini mengindikasikan bahwa fluktuasi kualitas udara lebih dipengaruhi oleh faktor regional Beijing secara luas dibandingkan aktivitas lokal di sekitar stasiun.
+        """
+    else:
+        # Jika user cuma pilih 1 stasiun
+        curr_stat = station_stats.index[0]
+        curr_val = station_stats.values[0]
+        insight_text = f"""
+        **Insight Global:**
+        * **Analisis Tunggal:** Saat ini dashboard hanya menampilkan data untuk stasiun **{curr_stat}** dengan rata-rata konsentrasi sebesar **{curr_val:.2f} µg/m³**.
+        * Untuk melihat perbandingan kualitas udara antar wilayah, silakan pilih stasiun tambahan pada menu filter di sidebar.
+        """
+
+    st.markdown(insight_text)
+
+    st.divider()
 
 # --- BAGIAN 1: KARAKTERISTIK AOTIZHONGXIN ---
-st.header(f"1. Karakteristik PM2.5 di Aotizhongxin Musim Dingin (Tahun {year_aoti})")
-
-winter_months = [11, 12, 1, 2]
-aoti_winter = all_df[
-    (all_df['station'] == 'Aotizhongxin') & 
-    (all_df['year'].isin([year_aoti - 1, year_aoti, year_aoti + 1])) & 
-    (all_df['month'].isin(winter_months))
-].copy()
-
-# Fungsi label dinamis berdasarkan tahun yang dipilih
-def get_winter_label(row, selected_year):
-    # Periode 1: Tahun Sebelumnya - Tahun Terpilih
-    if (row['year'] == selected_year - 1 and row['month'] >= 11) or (row['year'] == selected_year and row['month'] <= 2):
-        return f'Winter {selected_year-1}-{selected_year}'
-    # Periode 2: Tahun Terpilih - Tahun Sesudahnya
-    elif (row['year'] == selected_year and row['month'] >= 11) or (row['year'] == selected_year + 1 and row['month'] <= 2):
-        return f'Winter {selected_year}-{selected_year+1}'
-    return None
-
-# Terapkan fungsi dengan parameter year_aoti
-aoti_winter['winter_period'] = aoti_winter.apply(get_winter_label, axis=1, args=(year_aoti,))
-aoti_winter_clean = aoti_winter.dropna(subset=['winter_period'])
-
-if not aoti_winter_clean.empty:
-    winter_avg = aoti_winter_clean.groupby('winter_period')['PM2.5'].mean().reset_index()
+if "Aotizhongxin" in selected_stations:
+    st.header("1. Karakteristik PM2.5 di Aotizhongxin (Musim Dingin)")
     
-    winter_avg = winter_avg.sort_values('winter_period')
+    winter_months = [11, 12, 1, 2]
+    aoti_data = main_df[main_df['station'] == 'Aotizhongxin'].copy()
     
-    c1, c2 = st.columns([2, 1])
-    with c1:
+    # Fungsi label dinamis agar tidak hardcoded
+    def get_winter_label(row):
+        year = row['year']
+        month = row['month']
+        if month >= 11:
+            return f"Winter {year}-{year+1}"
+        elif month <= 2:
+            return f"Winter {year-1}-{year}"
+        return None
+
+    aoti_data['winter_period'] = aoti_data.apply(get_winter_label, axis=1)
+    aoti_winter_clean = aoti_data.dropna(subset=['winter_period'])
+
+    if not aoti_winter_clean.empty:
+        winter_avg = aoti_winter_clean.groupby('winter_period')['PM2.5'].mean().reset_index()
         fig, ax = plt.subplots(figsize=(10, 5))
         sns.barplot(data=winter_avg, x='winter_period', y='PM2.5', palette='coolwarm', ax=ax)
-        
         for p in ax.patches:
-            ax.annotate(f'{p.get_height():.2f}', (p.get_x() + p.get_width() / 2., p.get_height()),
-                        ha='center', va='center', xytext=(0, 9), textcoords='offset points')
-                       
-        ax.set_title(f"Perbandingan Rata-rata PM2.5 Musim Dingin Sekitar {year_aoti}")
-        ax.set_ylim(0, winter_avg['PM2.5'].max() + 50)
+            ax.annotate(f'{p.get_height():.2f}', (p.get_x() + p.get_width() / 2., p.get_height()), ha='center')
         st.pyplot(fig)
-        st.caption(f"> **Keterangan:** Menampilkan perbandingan musim dingin periode {year_aoti-1}/{year_aoti} dan {year_aoti}/{year_aoti+1}.")
+        st.caption("> **Info:** Periode Winter dihitung dari November sampai Februari tahun berikutnya.")
+    else:
+        st.info("Pilih rentang waktu yang mencakup bulan November-Februari untuk melihat analisis musim dingin.")
 
-    with c2:
-        st.write(f"**Rata-rata Periode:**")
-        for index, row in winter_avg.iterrows():
-            st.write(f"- {row['winter_period']}: **{row['PM2.5']:.2f} µg/m³**")
+# --- INSIGHT DINAMIS AOTIZHONGXIN ---
+    if len(winter_avg) >= 2:
+        # Mengambil dua periode terakhir untuk dibandingkan
+        last_two = winter_avg.tail(2)
+        p1_name, p2_name = last_two['winter_period'].values
+        p1_val, p2_val = last_two['PM2.5'].values
         
-        if len(winter_avg) == 2:
-            val1 = winter_avg.iloc[0]['PM2.5']
-            val2 = winter_avg.iloc[1]['PM2.5']
-            diff = ((val2 - val1) / val1) * 100
-            kondisi = "kenaikan" if diff > 0 else "penurunan"
-            st.info(f"Terjadi {kondisi} konsentrasi sebesar ~{abs(diff):.1f}% antara kedua periode.")
-else:
-    st.warning(f"Data perbandingan untuk tahun {year_aoti} tidak mencukupi.")
-
+        # Hitung selisih persen
+        diff_pct = ((p2_val - p1_val) / p1_val) * 100
+        status = "peningkatan" if diff_pct > 0 else "penurunan"
+            
+        st.markdown(f"""
+        **Insight Aotizhongxin:**
+        * **Perbandingan Periode:** Rata-rata konsentrasi PM2.5 berubah dari **{p1_val:.2f} µg/m³** pada {p1_name} menjadi **{p2_val:.2f} µg/m³** pada {p2_name}.
+        * **Analisis Tren:** Terjadi **{status}** konsentrasi sebesar **{abs(diff_pct):.1f}%** jika dibandingkan dengan periode musim dingin sebelumnya. 
+        * **Catatan Musiman:** Tingginya angka di musim dingin biasanya berkaitan dengan fenomena inversi suhu atau peningkatan aktivitas pemanas ruangan di wilayah utara.
+        """)
+    else:
+        st.markdown(f"""
+        **Insight Aotizhongxin:**
+        * Saat ini hanya tersedia data untuk periode **{winter_avg.iloc[0]['winter_period']}** dengan rata-rata **{winter_avg.iloc[0]['PM2.5']:.2f} µg/m³**. 
+        * Tambah rentang tahun pada filter untuk melihat perbandingan antar musim dingin.
+        """)
 
 # --- BAGIAN 2: ANALISIS WANLIU ---
-st.header(f"2. Faktor Meteorologi di Stasiun Wanliu ({selected_year})")
+if "Wanliu" in selected_stations:
+    st.header("2. Analisis Kualitas Udara di Stasiun Wanliu")
+    wanliu_df = main_df[main_df['station'] == 'Wanliu'].copy()
 
-# Filter berdasarkan input selected_year
-wanliu_year = all_df[(all_df['station'] == 'Wanliu') & (all_df['year'] == selected_year)].copy()
+    if not wanliu_df.empty:
+        # Variabel bantuan untuk teks periode
+        periode_text = f"Periode: {start_date} s/d {end_date}"
+        
+        tabs = st.tabs(["Matriks Korelasi", "Distribusi PM2.5", "Korelasi Angin", "Kategori"])
 
-tab1, tab2, tab3, tab4 = st.tabs(["Matriks Korelasi", "Distribusi Bulanan PM2.5", "Korelasi Angin (WSPM)", "Kategori Kualitas Udara"])
+        with tabs[0]:
+            st.subheader("Matriks Korelasi Faktor Meteorologi")
+            st.caption(f"📊 {periode_text}")
+            
+            # Hitung korelasi
+            cols = ['PM2.5', 'TEMP', 'PRES', 'DEWP', 'RAIN', 'WSPM']
+            corr_matrix = wanliu_df[cols].corr()
+            
+            # Plot Heatmap
+            fig_corr, ax_corr = plt.subplots(figsize=(8, 6))
+            sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap='RdYlGn', ax=ax_corr)
+            ax_corr.set_title(f"Korelasi PM2.5 di Wanliu\n({periode_text})", fontsize=12)
+            st.pyplot(fig_corr)
+            
+            # Perhitungan Insight Dinamis
+            top_f = corr_matrix['PM2.5'].drop('PM2.5').abs().idxmax()
+            top_corr_val = corr_matrix.loc['PM2.5', top_f]
+            
+            st.markdown(f"""
+            **Insight Korelasi:**
+            * Faktor meteorologi yang memiliki hubungan paling signifikan dengan PM2.5 adalah **{top_f}** dengan koefisien sebesar **{top_corr_val:.2f}**.
+            * Nilai ini menunjukkan seberapa kuat perubahan faktor cuaca tersebut memengaruhi fluktuasi konsentrasi polutan di Wanliu pada rentang waktu terpilih.
+            """)
 
-with tab1:
-    st.subheader("Matriks Korelasi PM2.5 vs Faktor Meteorologi")
-    
-    # Filter kolom numerik
-    cols_corr = ['PM2.5', 'TEMP', 'PRES', 'DEWP', 'RAIN', 'WSPM']
-    correlation_matrix = wanliu_year[cols_corr].corr()
-    
-    # Membuat plot
-    fig_corr, ax_corr = plt.subplots(figsize=(10, 8))
-    sns.heatmap(correlation_matrix, annot=True, fmt=".2f", cmap='RdYlGn', center=0, ax=ax_corr)
-    st.pyplot(fig_corr)
-    
-    # Mengambil nilai korelasi secara dinamis
-    wspm_corr = correlation_matrix.loc['PM2.5', 'WSPM']
-    temp_corr = correlation_matrix.loc['PM2.5', 'TEMP']
-    
-    # Menentukan variabel mana yang paling berpengaruh (berdasarkan nilai absolut korelasi)
-    # Kita bandingkan nilai korelasi PM2.5 terhadap faktor lainnya
-    top_corr_factor = correlation_matrix['PM2.5'].drop('PM2.5').abs().idxmax()
-    top_corr_value = correlation_matrix.loc['PM2.5', top_corr_factor]
+        with tabs[1]:
+            st.subheader("Distribusi PM2.5 per Bulan")
+            st.caption(f"📅 {periode_text}")
+            
+            # Plot Boxplot
+            fig_box, ax_box = plt.subplots(figsize=(10, 5))
+            sns.boxplot(x='month', y='PM2.5', data=wanliu_df, palette='viridis', ax=ax_box)
+            ax_box.axhline(150, color='red', linestyle='--', label='Ambang Batas Unhealthy')
+            ax_box.set_title(f"Variabilitas Bulanan PM2.5\n{periode_text}")
+            st.pyplot(fig_box)
+            
+            # Perhitungan Insight Dinamis
+            highest_median_month = wanliu_df.groupby('month')['PM2.5'].median().idxmax()
+            max_val_wanliu = wanliu_df['PM2.5'].max()
+            
+            st.markdown(f"""
+            **Insight Distribusi:**
+            * **Bulan Terpolusi:** Secara median, kualitas udara terburuk di stasiun Wanliu tercatat pada bulan ke-**{int(highest_median_month)}**.
+            * **Nilai Ekstrem:** Terdeteksi lonjakan polusi (outlier) hingga **{max_val_wanliu:.2f} µg/m³**, yang mengindikasikan adanya anomali cuaca atau polusi lokal sesaat.
+            """)
 
-    # Menampilkan Insight Dinamis
-    st.markdown(f"""
-    **Insight:**
-    * **Faktor Dominan:** Berdasarkan data tahun {selected_year}, faktor meteorologi yang memiliki hubungan paling kuat dengan konsentrasi PM2.5 adalah **{top_corr_factor}** dengan koefisien korelasi sebesar **{top_corr_value:.2f}**.
-    * **Analisis Kecepatan Angin (WSPM):** Kecepatan angin menunjukkan korelasi sebesar **{wspm_corr:.2f}**. Nilai negatif ini mengindikasikan hubungan terbalik, di mana setiap peningkatan kecepatan angin cenderung membantu proses dispersi (penyebaran) polutan, sehingga konsentrasi PM2.5 di permukaan menurun.
-    * **Variabel Lain:** Suhu (TEMP) memiliki korelasi sebesar **{temp_corr:.2f}**. Secara keseluruhan, hasil ini menunjukkan bahwa faktor cuaca memang memengaruhi kualitas udara, namun sifatnya kompleks dan dipengaruhi oleh berbagai variabel secara simultan.
-    """)
+        with tabs[2]:
+            st.subheader("Tren PM2.5 vs Kecepatan Angin (WSPM)")
+            st.caption(f"📈 {periode_text}")
+            
+            # Agregasi data untuk tren
+            trend = wanliu_df.groupby('month').agg({'PM2.5':'mean', 'WSPM':'mean'}).reset_index()
+            
+            # Plot Line Chart (Dual Axis)
+            fig_t, ax1 = plt.subplots(figsize=(10, 5))
+            ax2 = ax1.twinx()
+            sns.lineplot(data=trend, x='month', y='PM2.5', color='red', marker='o', label='PM2.5', ax=ax1)
+            sns.lineplot(data=trend, x='month', y='WSPM', color='blue', marker='s', label='Angin (WSPM)', ax=ax2)
+            plt.title(f"Hubungan PM2.5 dan Kecepatan Angin\n{periode_text}")
+            st.pyplot(fig_t)
 
-with tab2:
-    st.subheader("Distribusi PM2.5 per Bulan")
-    
-    # Inisialisasi Plot
-    fig3, ax3 = plt.subplots(figsize=(12, 6))
-    sns.boxplot(x='month', y='PM2.5', data=wanliu_year, palette='viridis', ax=ax3)
-    ax3.axhline(150, color='red', linestyle='--', label='Ambang Batas Unhealthy (150 µg/m³)')
-    ax3.legend()
-    st.pyplot(fig3)
+            # Perhitungan Insight Dinamis
+            wspm_pm_corr = wanliu_df[['PM2.5', 'WSPM']].corr().iloc[0,1]
+            
+            st.markdown(f"""
+            **Insight Hubungan Angin:**
+            * Koefisien korelasi antara kecepatan angin dan PM2.5 adalah **{wspm_pm_corr:.2f}**.
+            * Korelasi negatif menunjukkan bahwa angin yang lebih kencang cenderung membantu menyebarkan polutan, sehingga menurunkan konsentrasi PM2.5 di permukaan.
+            """)
 
-    # --- PERHITUNGAN DINAMIS UNTUK INSIGHT ---
-    # 1. Mencari bulan dengan median PM2.5 tertinggi
-    monthly_stats = wanliu_year.groupby('month')['PM2.5'].median()
-    max_median_month = monthly_stats.idxmax()
-    max_median_value = monthly_stats.max()
-
-    # 2. Mencari nilai pencilan (outlier) tertinggi
-    max_outlier = wanliu_year['PM2.5'].max()
-
-    # 3. Menghitung persentase data di atas ambang batas (150)
-    above_threshold = (wanliu_year['PM2.5'] > 150).mean() * 100
-
-    st.markdown(f"""
-    **Insight:**
-    * **Variabilitas Polusi Akhir Tahun:** Berdasarkan data tahun {selected_year}, bulan **{max_median_month}** menunjukkan tingkat polusi tertinggi dengan nilai median sebesar **{max_median_value:.2f} $\mu g/m^3$**. Rentang antarkuartil (*interquartile range*) yang lebar pada akhir tahun mengindikasikan variabilitas polusi yang sangat tinggi.
-    * **Identifikasi Outlier Ekstrem:** Terdeteksi lonjakan konsentrasi ekstrem (outlier) hingga mencapai **{max_outlier:.2f} $\mu g/m^3$**. Hal ini mengonfirmasi adanya anomali polusi udara berat pada jam-jam tertentu yang melampaui kondisi normal bulanan.
-    * **Analisis Ambang Batas:** Secara keseluruhan di tahun {selected_year}, sebanyak **{above_threshold:.1f}%** dari total waktu pemantauan berada di atas ambang batas 150 $\mu g/m^3$.
-    * **Stabilitas Musim Panas:** Sebaran data pada pertengahan tahun cenderung lebih stabil dan berada di bawah garis merah, memvalidasi bahwa kondisi meteorologi musim panas lebih efektif dalam mendispersi polutan.
-    * **Catatan Standar:** Garis ambang batas 150 $\mu g/m^3$ merujuk pada standar kategori **'Unhealthy'** menurut US-EPA Air Quality Index (AQI).
-    """)
-
-with tab3:
-    st.subheader("Hubungan PM2.5 dengan Kecepatan Angin")
-    
-    # Menghitung korelasi secara dinamis
-    corr_val = wanliu_year[['PM2.5', 'WSPM']].corr().iloc[0,1]
-    
-    # Agregasi bulanan
-    monthly_trend = wanliu_year.groupby('month').agg({'PM2.5':'mean', 'WSPM':'mean'}).reset_index()
-    
-    # Visualisasi
-    fig2, ax2 = plt.subplots(figsize=(10, 5))
-    ax2_twin = ax2.twinx()
-    
-    sns.lineplot(data=monthly_trend, x='month', y='PM2.5', marker='o', color='red', label='PM2.5', ax=ax2)
-    sns.lineplot(data=monthly_trend, x='month', y='WSPM', marker='s', color='blue', label='Angin (WSPM)', ax=ax2_twin)
-    
-    ax2.set_ylabel("PM2.5 (µg/m³)", color='red')
-    ax2_twin.set_ylabel("WSPM (m/s)", color='blue')
-    ax2.set_title(f"Tren PM2.5 vs Kecepatan Angin - Tahun {selected_year}")
-    
-    st.pyplot(fig2)
-
-    # --- LOGIKA INSIGHT DINAMIS ---
-    # Mencari bulan dengan kecepatan angin terendah
-    min_wind_month = monthly_trend.loc[monthly_trend['WSPM'].idxmin(), 'month']
-    min_wind_value = monthly_trend['WSPM'].min()
-    
-    # Mencari bulan dengan polusi tertinggi untuk dikaitkan dengan angin
-    max_pm_month = monthly_trend.loc[monthly_trend['PM2.5'].idxmax(), 'month']
-    
-    # Menentukan kekuatan korelasi secara deskriptif
-    strength = "lemah" if abs(corr_val) < 0.3 else "sedang" if abs(corr_val) < 0.7 else "kuat"
-
-    st.markdown(f"""
-    **Insight:**
-    * **Analisis Korelasi:** Koefisien korelasi sebesar **{corr_val:.2f}** menunjukkan adanya hubungan negatif yang **{strength}** antara kecepatan angin dan konsentrasi polutan.
-    * **Pola Musiman:** Terlihat pola di mana peningkatan kecepatan angin (WSPM) cenderung diikuti dengan penurunan konsentrasi PM2.5. Hal ini mengonfirmasi peran angin sebagai agen pembersih polutan (*pollutant dispersion*).
-    * **Titik Kritis:** Pada tahun {selected_year}, kecepatan angin terendah rata-rata terjadi di bulan **{int(min_wind_month)}** ({min_wind_value:.2f} m/s). Kondisi udara yang tenang (*stagnant air*) ini berisiko tinggi memicu penumpukan polutan karena minimnya sirkulasi udara di permukaan.
-    * **Korelasi Visual:** Puncak polusi tertinggi di bulan **{int(max_pm_month)}** tampak bertepatan dengan periode di mana kecepatan angin berada pada level rendah/menurun, memperkuat hipotesis bahwa faktor meteorologi lokal sangat memengaruhi kualitas udara di Wanliu.
-    """)
-
-with tab4:
-    st.subheader("Proporsi Kategori Kualitas Udara")
-    def categorize_epa(val):
-        if val <= 35: return 'Baik'
-        elif val <= 75: return 'Sedang'
-        elif val <= 150: return 'Tidak Sehat'
-        else: return 'Sangat Berbahaya'
-    
-    wanliu_year['category'] = wanliu_year['PM2.5'].apply(categorize_epa)
-    cat_counts = wanliu_year['category'].value_counts()
-    
-    # Urutkan kategori agar konsisten di chart
-    order = ['Baik', 'Sedang', 'Tidak Sehat', 'Sangat Berbahaya']
-    cat_counts = cat_counts.reindex(order).fillna(0)
-   
-    col_p1, col_p2 = st.columns(2)
-    with col_p1:
-        fig4, ax4 = plt.subplots()
-        ax4.pie(cat_counts, labels=cat_counts.index, autopct='%1.1f%%', 
-                colors=['#4CAF50', '#FFEB3B', '#FF9800', '#F44336'])
-        st.pyplot(fig4)
-    with col_p2:
-        st.write("**Detail Jumlah Jam Pemantauan:**")
-        st.table(cat_counts)
-
-    # --- LOGIKA INSIGHT DINAMIS ---
-    # Mencari kategori yang paling dominan
-    most_common_cat = cat_counts.idxmax()
-    most_common_pct = (cat_counts.max() / cat_counts.sum()) * 100
-    
-    # Menghitung total jam dalam kondisi tidak sehat (Tidak Sehat + Sangat Berbahaya)
-    unhealthy_total_pct = ((cat_counts['Tidak Sehat'] + cat_counts['Sangat Berbahaya']) / cat_counts.sum()) * 100
-
-    st.markdown(f"""
-    **Insight:**
-    * **Dominansi Kualitas Udara:** Pada tahun {selected_year}, kualitas udara di stasiun Wanliu paling sering berada pada kategori **{most_common_cat}** dengan proporsi mencapai **{most_common_pct:.1f}%** dari total waktu pemantauan.
-    * **Paparan Risiko Kesehatan:** Perlu menjadi perhatian bahwa akumulasi kategori 'Tidak Sehat' dan 'Sangat Berbahaya' mencapai **{unhealthy_total_pct:.1f}%**. Hal ini menunjukkan bahwa masyarakat masih sering terpapar polusi udara yang melampaui ambang batas aman kesehatan.
-    * **Efektivitas Standar:** Penggunaan kategorisasi berdasarkan standar **US-EPA AQI** memberikan gambaran yang lebih praktis bagi pengambilan kebijakan terkait peringatan kesehatan publik (*public health advisory*) pada hari-hari dengan polusi tinggi.
-    """)
+        with tabs[3]:
+            st.subheader("Kategori Kualitas Udara")
+            st.caption(f"📊 Analisis Proporsi: {periode_text}")
+            
+            def cat_epa(v):
+                if v <= 35: return 'Baik'
+                elif v <= 75: return 'Sedang'
+                elif v <= 150: return 'Tidak Sehat'
+                else: return 'Sangat Berbahaya'
+            
+            wanliu_df['cat'] = wanliu_df['PM2.5'].apply(cat_epa)
+            counts = wanliu_df['cat'].value_counts().reindex(['Baik', 'Sedang', 'Tidak Sehat', 'Sangat Berbahaya']).fillna(0)
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                fig_p, ax_p = plt.subplots()
+                ax_p.pie(counts, labels=counts.index, autopct='%1.1f%%', colors=['#4CAF50','#FFEB3B','#FF9800','#F44336'])
+                ax_p.set_title(f"Proporsi Kategori PM2.5\nWanliu ({periode_text})")
+                st.pyplot(fig_p)
+            with col2:
+                st.write("**Data Observasi:**")
+                st.table(counts)
+            
+            # Perhitungan Insight 
+            dom_cat = counts.idxmax()
+            dom_pct = (counts.max() / counts.sum()) * 100
+            
+            st.markdown(f"""
+            **Insight Kategori:**
+            * Mayoritas kualitas udara di Wanliu berada pada kategori **{dom_cat}** (**{dom_pct:.1f}%**).
+            * Ringkasan ini memberikan gambaran tingkat risiko kesehatan bagi penduduk di sekitar stasiun Wanliu selama periode observasi.
+            """)
+    else:
+        st.info("Data Wanliu tidak tersedia dalam filter rentang waktu atau stasiun yang dipilih.")
 
 st.divider()
-st.caption(f"Copyright © 2026 | Nurul Ainil Fitri | Data Source: Air Quality Dataset")
+st.caption(f"Copyright © 2026 | Nurul Ainil Fitri")
